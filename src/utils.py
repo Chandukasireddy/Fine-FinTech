@@ -1,274 +1,373 @@
 """
-Utility functions for model conversion and evaluation
+Utility functions for the Fine-FinTech project.
 """
 
 import os
-import json
-import torch
-import ollama
+import sys
+import yaml
 import logging
+import torch
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel
-import requests
+from typing import Dict, Any, Optional
+from datetime import datetime
 
-logger = logging.getLogger(__name__)
-
-class ModelConverter:
-    """Convert between different model formats"""
+def setup_logging(
+    level: str = "INFO",
+    log_file: Optional[str] = None,
+    log_dir: str = "./logs"
+) -> logging.Logger:
+    """
+    Setup logging configuration.
     
-    def __init__(self, model_path: str):
-        self.model_path = Path(model_path)
+    Args:
+        level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_file: Optional log file name
+        log_dir: Directory to store log files
         
-    def convert_to_ollama_format(self, ollama_model_name: str = "gemma3-finetuned"):
-        """
-        Convert fine-tuned model to Ollama format
-        Note: This is a simplified version. For full conversion, you may need additional tools.
-        """
-        logger.info(f"Converting model to Ollama format: {ollama_model_name}")
-        
-        try:
-            # Load the fine-tuned model
-            tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-            model = AutoModelForCausalLM.from_pretrained(self.model_path)
-            
-            # Save in a format compatible with Ollama
-            # This is a placeholder - actual conversion may require GGUF format
-            output_dir = self.model_path / "ollama_export"
-            output_dir.mkdir(exist_ok=True)
-            
-            # Save model and tokenizer
-            model.save_pretrained(output_dir / "model")
-            tokenizer.save_pretrained(output_dir / "tokenizer")
-            
-            # Create Ollama Modelfile
-            modelfile_content = f"""
-FROM {output_dir / "model"}
-
-TEMPLATE \"\"\"{{ if .System }}{{ .System }}
-{{ end }}{{ if .Prompt }}### Instruction:
-{{ .Prompt }}
-
-{{ end }}### Response:
-{{ .Response }}\"\"\"
-
-PARAMETER stop "###"
-PARAMETER stop "Instruction:"
-PARAMETER stop "Response:"
-
-SYSTEM \"\"\"You are a helpful assistant specialized in financial analysis and reasoning.\"\"\"
-"""
-            
-            with open(output_dir / "Modelfile", "w") as f:
-                f.write(modelfile_content)
-            
-            logger.info(f"Model exported to: {output_dir}")
-            logger.info("To import into Ollama, run:")
-            logger.info(f"ollama create {ollama_model_name} -f {output_dir / 'Modelfile'}")
-            
-        except Exception as e:
-            logger.error(f"Error converting model: {str(e)}")
-            raise
-
-class ModelEvaluator:
-    """Evaluate model performance"""
+    Returns:
+        Configured logger
+    """
+    # Create logs directory
+    Path(log_dir).mkdir(exist_ok=True)
     
-    def __init__(self, model_path: Optional[str] = None, ollama_model: Optional[str] = None):
-        self.model_path = model_path
-        self.ollama_model = ollama_model
-        
-        if model_path:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_path, 
-                torch_dtype=torch.float16,
-                device_map="auto"
-            )
-        
-    def generate_response(self, prompt: str, max_length: int = 512, temperature: float = 0.7) -> str:
-        """Generate response using the model"""
-        
-        if self.ollama_model:
-            return self._generate_with_ollama(prompt, max_length, temperature)
-        else:
-            return self._generate_with_transformers(prompt, max_length, temperature)
+    # Configure logging format
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
     
-    def _generate_with_ollama(self, prompt: str, max_length: int, temperature: float) -> str:
-        """Generate using Ollama"""
-        try:
-            response = ollama.chat(
-                model=self.ollama_model,
-                messages=[{"role": "user", "content": prompt}],
-                options={
-                    "temperature": temperature,
-                    "num_predict": max_length
-                }
-            )
-            return response['message']['content']
-        except Exception as e:
-            logger.error(f"Error with Ollama generation: {str(e)}")
-            return ""
+    # Setup root logger
+    logger = logging.getLogger()
+    logger.setLevel(getattr(logging, level.upper()))
     
-    def _generate_with_transformers(self, prompt: str, max_length: int, temperature: float) -> str:
-        """Generate using transformers"""
-        try:
-            inputs = self.tokenizer(prompt, return_tensors="pt")
-            
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    inputs.input_ids,
-                    max_length=len(inputs.input_ids[0]) + max_length,
-                    temperature=temperature,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id
-                )
-            
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            # Remove the input prompt from the response
-            response = response[len(prompt):].strip()
-            return response
-            
-        except Exception as e:
-            logger.error(f"Error with transformers generation: {str(e)}")
-            return ""
+    # Clear existing handlers
+    logger.handlers.clear()
     
-    def evaluate_on_samples(self, test_samples: List[Dict[str, str]], output_file: str = "evaluation_results.json"):
-        """Evaluate model on test samples"""
-        logger.info("Starting evaluation on test samples...")
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    
+    # File handler if specified
+    if log_file:
+        if not log_file.endswith('.log'):
+            log_file += '.log'
         
-        results = []
-        
-        for i, sample in enumerate(test_samples):
-            instruction = sample.get('instruction', sample.get('question', ''))
-            expected_response = sample.get('response', sample.get('answer', ''))
-            
-            # Generate response
-            generated_response = self.generate_response(instruction)
-            
-            # Store result
-            result = {
-                'sample_id': i,
-                'instruction': instruction,
-                'expected_response': expected_response,
-                'generated_response': generated_response,
-                'input_length': len(instruction),
-                'output_length': len(generated_response)
-            }
-            
-            results.append(result)
-            
-            if (i + 1) % 10 == 0:
-                logger.info(f"Processed {i + 1}/{len(test_samples)} samples")
-        
-        # Save results
-        with open(output_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        
-        logger.info(f"Evaluation completed. Results saved to {output_file}")
-        return results
+        file_path = Path(log_dir) / log_file
+        file_handler = logging.FileHandler(file_path)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    
+    logger.info(f"Logging initialized at level {level}")
+    return logger
 
-class OllamaIntegration:
-    """Integration utilities for Ollama"""
+def load_config(config_path: str) -> Dict[str, Any]:
+    """
+    Load configuration from YAML file.
     
-    @staticmethod
-    def list_models() -> List[str]:
-        """List available Ollama models"""
-        try:
-            models = ollama.list()
-            return [model['name'] for model in models['models']]
-        except Exception as e:
-            logger.error(f"Error listing Ollama models: {str(e)}")
-            return []
+    Args:
+        config_path: Path to the configuration file
+        
+    Returns:
+        Configuration dictionary
+        
+    Raises:
+        FileNotFoundError: If config file doesn't exist
+        yaml.YAMLError: If config file is invalid YAML
+    """
+    config_path = Path(config_path)
     
-    @staticmethod
-    def pull_model(model_name: str):
-        """Pull a model from Ollama registry"""
-        try:
-            logger.info(f"Pulling model: {model_name}")
-            ollama.pull(model_name)
-            logger.info(f"Successfully pulled {model_name}")
-        except Exception as e:
-            logger.error(f"Error pulling model {model_name}: {str(e)}")
-            raise
+    if not config_path.exists():
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
     
-    @staticmethod
-    def create_model_from_modelfile(model_name: str, modelfile_path: str):
-        """Create Ollama model from Modelfile"""
-        try:
-            logger.info(f"Creating Ollama model: {model_name}")
-            with open(modelfile_path, 'r') as f:
-                modelfile = f.read()
-            
-            ollama.create(model=model_name, modelfile=modelfile)
-            logger.info(f"Successfully created model: {model_name}")
-            
-        except Exception as e:
-            logger.error(f"Error creating Ollama model: {str(e)}")
-            raise
-
-def load_test_samples(file_path: str) -> List[Dict[str, str]]:
-    """Load test samples from file"""
     try:
-        with open(file_path, 'r') as f:
-            if file_path.endswith('.json'):
-                return json.load(f)
-            elif file_path.endswith('.jsonl'):
-                return [json.loads(line) for line in f]
+        with open(config_path, 'r', encoding='utf-8') as file:
+            config = yaml.safe_load(file)
         
-    except Exception as e:
-        logger.error(f"Error loading test samples: {str(e)}")
-        return []
+        logging.getLogger(__name__).info(f"Configuration loaded from: {config_path}")
+        return config
+        
+    except yaml.YAMLError as e:
+        raise yaml.YAMLError(f"Invalid YAML in config file {config_path}: {str(e)}")
 
-def compare_models(model1_path: str, model2_ollama: str, test_samples: List[Dict], output_dir: str = "comparison_results"):
-    """Compare two models on the same test set"""
+def merge_configs(*configs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merge multiple configuration dictionaries.
+    Later configs override earlier ones for conflicting keys.
     
-    os.makedirs(output_dir, exist_ok=True)
+    Args:
+        *configs: Variable number of config dictionaries
+        
+    Returns:
+        Merged configuration dictionary
+    """
+    merged = {}
     
-    # Evaluate first model (HuggingFace format)
-    evaluator1 = ModelEvaluator(model_path=model1_path)
-    results1 = evaluator1.evaluate_on_samples(test_samples, f"{output_dir}/model1_results.json")
+    for config in configs:
+        if config:
+            merged = _deep_merge(merged, config)
     
-    # Evaluate second model (Ollama)
-    evaluator2 = ModelEvaluator(ollama_model=model2_ollama)
-    results2 = evaluator2.evaluate_on_samples(test_samples, f"{output_dir}/model2_results.json")
+    return merged
+
+def _deep_merge(dict1: Dict[str, Any], dict2: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Deep merge two dictionaries.
     
-    # Create comparison report
-    comparison = {
-        'model1_path': model1_path,
-        'model2_ollama': model2_ollama,
-        'total_samples': len(test_samples),
-        'avg_response_length_model1': sum(r['output_length'] for r in results1) / len(results1),
-        'avg_response_length_model2': sum(r['output_length'] for r in results2) / len(results2),
-        'results': []
+    Args:
+        dict1: First dictionary
+        dict2: Second dictionary (takes precedence)
+        
+    Returns:
+        Merged dictionary
+    """
+    result = dict1.copy()
+    
+    for key, value in dict2.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    
+    return result
+
+def get_device_info() -> Dict[str, Any]:
+    """
+    Get information about available devices.
+    
+    Returns:
+        Device information dictionary
+    """
+    device_info = {
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+        "current_device": torch.cuda.current_device() if torch.cuda.is_available() else None,
+        "devices": []
     }
     
-    for i, (r1, r2) in enumerate(zip(results1, results2)):
-        comparison['results'].append({
-            'sample_id': i,
-            'instruction': r1['instruction'],
-            'model1_response': r1['generated_response'],
-            'model2_response': r2['generated_response'],
-            'expected_response': r1['expected_response']
-        })
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            device_props = torch.cuda.get_device_properties(i)
+            device_info["devices"].append({
+                "id": i,
+                "name": device_props.name,
+                "memory_total_gb": device_props.total_memory / (1024**3),
+                "memory_allocated_gb": torch.cuda.memory_allocated(i) / (1024**3),
+                "memory_reserved_gb": torch.cuda.memory_reserved(i) / (1024**3),
+                "compute_capability": f"{device_props.major}.{device_props.minor}"
+            })
     
-    with open(f"{output_dir}/comparison_report.json", 'w') as f:
-        json.dump(comparison, f, indent=2)
-    
-    logger.info(f"Comparison completed. Report saved to {output_dir}/comparison_report.json")
-    return comparison
+    return device_info
 
-if __name__ == "__main__":
-    # Example usage
-    logging.basicConfig(level=logging.INFO)
+def format_model_size(num_parameters: int) -> str:
+    """
+    Format model size in human readable format.
     
-    # List available Ollama models
-    print("Available Ollama models:")
-    models = OllamaIntegration.list_models()
-    for model in models:
-        print(f"  - {model}")
+    Args:
+        num_parameters: Number of model parameters
+        
+    Returns:
+        Formatted string (e.g., "1.2B", "345M")
+    """
+    if num_parameters >= 1_000_000_000:
+        return f"{num_parameters / 1_000_000_000:.1f}B"
+    elif num_parameters >= 1_000_000:
+        return f"{num_parameters / 1_000_000:.1f}M"
+    elif num_parameters >= 1_000:
+        return f"{num_parameters / 1_000:.1f}K"
+    else:
+        return str(num_parameters)
+
+def format_memory_size(bytes_size: int) -> str:
+    """
+    Format memory size in human readable format.
     
-    # Example evaluation (uncomment to use)
-    # evaluator = ModelEvaluator(ollama_model="gemma3:4b")
-    # response = evaluator.generate_response("What is the current ratio in financial analysis?")
-    # print(f"Response: {response}")
+    Args:
+        bytes_size: Size in bytes
+        
+    Returns:
+        Formatted string (e.g., "1.2GB", "345MB")
+    """
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes_size < 1024.0:
+            return f"{bytes_size:.1f}{unit}"
+        bytes_size /= 1024.0
+    return f"{bytes_size:.1f}PB"
+
+def get_timestamp() -> str:
+    """
+    Get current timestamp in ISO format.
+    
+    Returns:
+        ISO format timestamp string
+    """
+    return datetime.now().isoformat()
+
+def ensure_directory(path: str) -> Path:
+    """
+    Ensure directory exists, create if it doesn't.
+    
+    Args:
+        path: Directory path
+        
+    Returns:
+        Path object
+    """
+    path_obj = Path(path)
+    path_obj.mkdir(parents=True, exist_ok=True)
+    return path_obj
+
+def load_environment_variables():
+    """
+    Load environment variables from .env file if it exists.
+    """
+    try:
+        from dotenv import load_dotenv
+        env_path = Path(".env")
+        if env_path.exists():
+            load_dotenv(env_path)
+            logging.getLogger(__name__).info("Environment variables loaded from .env")
+        else:
+            logging.getLogger(__name__).warning(".env file not found")
+    except ImportError:
+        logging.getLogger(__name__).warning("python-dotenv not installed")
+
+def validate_config(config: Dict[str, Any]) -> bool:
+    """
+    Validate configuration dictionary for required fields.
+    
+    Args:
+        config: Configuration dictionary to validate
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    logger = logging.getLogger(__name__)
+    
+    required_sections = ["model", "training", "lora", "dataset"]
+    missing_sections = []
+    
+    for section in required_sections:
+        if section not in config:
+            missing_sections.append(section)
+    
+    if missing_sections:
+        logger.error(f"Missing required config sections: {missing_sections}")
+        return False
+    
+    # Validate model config
+    model_config = config.get("model", {})
+    if not model_config.get("name"):
+        logger.error("Model name not specified in config")
+        return False
+    
+    # Validate dataset config
+    dataset_config = config.get("dataset", {})
+    if not dataset_config.get("name"):
+        logger.error("Dataset name not specified in config")
+        return False
+    
+    logger.info("Configuration validation passed")
+    return True
+
+def count_model_parameters(model) -> Dict[str, int]:
+    """
+    Count model parameters.
+    
+    Args:
+        model: PyTorch model
+        
+    Returns:
+        Dictionary with parameter counts
+    """
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    
+    return {
+        "total_parameters": total_params,
+        "trainable_parameters": trainable_params,
+        "frozen_parameters": total_params - trainable_params
+    }
+
+def clear_gpu_memory():
+    """Clear GPU memory cache if CUDA is available."""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        logging.getLogger(__name__).info("GPU memory cache cleared")
+
+def get_project_root() -> Path:
+    """
+    Get the project root directory.
+    
+    Returns:
+        Path to project root
+    """
+    # Assuming this file is in src/ directory
+    current_file = Path(__file__)
+    project_root = current_file.parent.parent
+    return project_root.resolve()
+
+def save_results(results: Dict[str, Any], filename: str, results_dir: str = "./output"):
+    """
+    Save results to a JSON file.
+    
+    Args:
+        results: Results dictionary
+        filename: Output filename
+        results_dir: Directory to save results
+    """
+    import json
+    
+    results_path = ensure_directory(results_dir)
+    
+    # Add timestamp to filename if not present
+    if not filename.endswith('.json'):
+        filename += '.json'
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if timestamp not in filename:
+        name_parts = filename.split('.')
+        filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
+    
+    file_path = results_path / filename
+    
+    # Add metadata
+    results_with_meta = {
+        "timestamp": get_timestamp(),
+        "results": results
+    }
+    
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(results_with_meta, f, indent=2, ensure_ascii=False)
+    
+    logging.getLogger(__name__).info(f"Results saved to: {file_path}")
+
+class ConfigManager:
+    """Configuration manager for handling multiple config files."""
+    
+    def __init__(self, config_dir: str = "./config"):
+        self.config_dir = Path(config_dir)
+        self.configs = {}
+    
+    def load_all_configs(self) -> Dict[str, Any]:
+        """Load all configuration files from config directory."""
+        config_files = {
+            "model": "model_config.yaml",
+            "training": "training_config.yaml", 
+            "lora": "lora_config.yaml"
+        }
+        
+        merged_config = {}
+        
+        for config_name, filename in config_files.items():
+            config_path = self.config_dir / filename
+            if config_path.exists():
+                config_data = load_config(config_path)
+                merged_config.update(config_data)
+                self.configs[config_name] = config_data
+            else:
+                logging.getLogger(__name__).warning(f"Config file not found: {config_path}")
+        
+        return merged_config
+    
+    def get_config(self, config_name: str) -> Dict[str, Any]:
+        """Get specific configuration by name."""
+        return self.configs.get(config_name, {})

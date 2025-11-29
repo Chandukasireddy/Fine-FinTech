@@ -1,41 +1,38 @@
-# Core ML Libraries
+# Core ML libraries
 torch>=2.0.0
-transformers>=4.35.0
-accelerate>=0.24.0
-peft>=0.6.0
-trl>=0.7.0
-
-# Dataset and Data Processing
+transformers>=4.49.0
 datasets>=2.14.0
-huggingface_hub>=0.18.0
-pandas>=1.5.0
-numpy>=1.24.0
-
-# Training and Optimization
+accelerate>=0.20.0
+peft>=0.5.0
+trl>=0.7.0
 bitsandbytes>=0.41.0
+
+# Hugging Face and authentication
+huggingface_hub>=0.16.0
+safetensors>=0.3.0
+
+# Data processing and utilities
+numpy>=1.24.0
+pandas>=2.0.0
 scipy>=1.10.0
 scikit-learn>=1.3.0
 
-# Monitoring and Logging
+# Visualization and monitoring
+matplotlib>=3.7.0
+seaborn>=0.12.0
 wandb>=0.15.0
-tensorboard>=2.14.0
+tensorboard>=2.13.0
+
+# Development and configuration
+python-dotenv>=1.0.0
+pyyaml>=6.0
+click>=8.1.0
 tqdm>=4.65.0
 
-# Configuration and Utilities
-PyYAML>=6.0
-python-dotenv>=1.0.0
-omegaconf>=2.3.0
+# Optional: For enhanced performance
+flash-attn>=2.0.0  # Optional, for faster attention
+xformers>=0.0.20   # Optional, for memory optimization
 
-# Model Serving (Optional)
-gradio>=3.50.0
-streamlit>=1.28.0
-
-# Development Tools
+# Jupyter notebook support
 jupyter>=1.0.0
-ipykernel>=6.25.0
-black>=23.0.0
-flake8>=6.0.0
-
-# Ollama Integration
-ollama>=0.1.0
-requests>=2.31.0
+ipywidgets>=8.0.0
