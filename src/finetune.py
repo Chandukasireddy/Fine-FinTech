@@ -9,6 +9,8 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
+from dotenv import load_dotenv
+from huggingface_hub import login
 
 import transformers
 from transformers import (
@@ -34,9 +36,8 @@ class FineTuningConfig:
     """Configuration class for fine-tuning parameters"""
     
     # Model configuration
-    model_name: str = "google/gemma-2-9b-it"  # Gemma3 model from HF
-    ollama_model_name: str = "gemma3:4b"  # Your Ollama model
-    use_ollama_weights: bool = True
+    model_name: str = "google/gemma-3-4b-it"  # Gemma-3 4B instruction-tuned model
+    hf_token: Optional[str] = None  # HuggingFace token (will be loaded from .env)
     
     # LoRA configuration
     lora_r: int = 16
@@ -82,6 +83,21 @@ class Gemma3FineTuner:
         self.tokenizer = None
         self.model = None
         self.data_loader = FinQADataLoader()
+        self._authenticate_huggingface()
+    
+    def _authenticate_huggingface(self):
+        """Authenticate with HuggingFace using token from .env file"""
+        load_dotenv()
+        
+        if self.config.hf_token is None:
+            self.config.hf_token = os.getenv("HUGGINGFACE_TOKEN")
+        
+        if not self.config.hf_token:
+            logger.warning("No HuggingFace token found. Some models may not be accessible.")
+            logger.warning("Add HUGGINGFACE_TOKEN to your .env file.")
+        else:
+            login(self.config.hf_token)
+            logger.info("Successfully authenticated with HuggingFace")
         
     def setup_model_and_tokenizer(self):
         """Initialize the model and tokenizer"""
@@ -90,6 +106,7 @@ class Gemma3FineTuner:
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config.model_name,
+            token=self.config.hf_token,
             trust_remote_code=True,
             use_fast=True
         )
@@ -113,8 +130,10 @@ class Gemma3FineTuner:
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model_name,
             quantization_config=bnb_config,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,
             device_map="auto",
+            attn_implementation='eager',
+            token=self.config.hf_token,
             trust_remote_code=True
         )
         

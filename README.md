@@ -1,10 +1,10 @@
-# Fine-FinTech: Gemma3 Fine-tuning for Financial Q&A
+# Fine-FinTech: Gemma-3 Fine-tuning for Financial Q&A
 
-A comprehensive repository for fine-tuning Ollama's Gemma3 model using the TheFinAI/Fino1_Reasoning_Path_FinQA dataset to create a specialized financial reasoning model.
+A comprehensive repository for fine-tuning Google's Gemma-3 model using the TheFinAI/Fino1_Reasoning_Path_FinQA dataset to create a specialized financial reasoning model.
 
 ## 🎯 Project Overview
 
-This project enables you to fine-tune your locally installed Gemma3 model (via Ollama) to better understand and respond to financial questions with step-by-step reasoning. The model is trained on the FinQA dataset which contains financial question-answering pairs with detailed reasoning paths.
+This project enables you to fine-tune the Gemma-3 model from HuggingFace to better understand and respond to financial questions with step-by-step reasoning. The model is trained on the FinQA dataset which contains financial question-answering pairs with detailed reasoning paths.
 
 ## 📁 Project Structure
 
@@ -18,7 +18,9 @@ Fine-FinTech/
 │   └── training_config.yaml # Training parameters
 ├── scripts/                 # Utility scripts
 │   ├── setup.py            # Environment setup
+│   ├── hf_login.py         # HuggingFace authentication
 │   └── evaluate.py         # Model evaluation
+├── .env                     # Environment variables (HF token)
 ├── data/                    # Dataset storage (auto-created)
 ├── models/                  # Model storage (auto-created)
 ├── outputs/                 # Training outputs (auto-created)
@@ -30,72 +32,81 @@ Fine-FinTech/
 
 ### 1. Prerequisites
 
-- **Python 3.8+** with pip
+- **Python 3.10+** with pip
 - **NVIDIA GPU** with 8GB+ VRAM (recommended)
-- **Ollama** installed with Gemma3 model
+- **HuggingFace Account** with access to Gemma-3 model
 - **Git** for cloning repositories
 
-### 2. Install Ollama and Gemma3 (if not already done)
+### 2. Accept Gemma-3 License
 
-```bash
-# Install Ollama (if not installed)
-# Visit: https://ollama.ai/
-
-# Pull Gemma3 model
-ollama pull gemma3:4b
-# or for larger model:
-# ollama pull gemma3:9b
-```
+Before using Gemma-3, you need to accept the license:
+1. Visit: https://huggingface.co/google/gemma-3-4b-it
+2. Click "Agree and access repository"
+3. Get your HuggingFace token from: https://huggingface.co/settings/tokens
 
 ### 3. Setup Environment
 
 ```bash
-# Clone or navigate to your project directory
+# Navigate to project directory
 cd Fine-FinTech
 
-# Run setup script
-python scripts/setup.py
+# Create conda environment
+conda create -n fine-fintech python=3.10 -y
+conda activate fine-fintech
+
+# Install dependencies
+pip install -U datasets accelerate peft trl bitsandbytes git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3
+pip install python-dotenv PyYAML wandb
+
+# Add your HuggingFace token to .env file
+echo "HUGGINGFACE_TOKEN=your_token_here" > .env
 ```
 
-This will:
-- Check Python version compatibility
-- Install all required dependencies
-- Verify GPU availability
-- Check Ollama installation
-- Create necessary directories
-- Optionally setup Weights & Biases
+### 4. Test HuggingFace Authentication
 
-### 4. Configure Training
+```bash
+python scripts/hf_login.py
+```
 
-Edit `config/training_config.yaml` to customize:
+You should see: "✓ Successfully logged in to Hugging Face!"
+
+### 5. Configure Training
+
+The configuration is already set in `config/training_config.yaml`. Key settings:
 
 ```yaml
-# Key settings to adjust:
-model_name: "google/gemma-2-9b-it"  # Base model for fine-tuning
-ollama_model_name: "gemma3:4b"      # Your Ollama model
-num_train_epochs: 3                 # Training epochs
-per_device_train_batch_size: 2      # Batch size (adjust for your GPU)
-learning_rate: 2e-4                 # Learning rate
-max_seq_length: 2048                # Maximum sequence length
+model_name: "google/gemma-3-4b-it"  # Gemma-3 4B instruction-tuned model
+num_train_epochs: 3                  # Training epochs
+per_device_train_batch_size: 2       # Batch size (adjust for your GPU)
+learning_rate: 2e-4                  # Learning rate
+max_seq_length: 2048                 # Maximum sequence length
+use_4bit: true                       # Use 4-bit quantization for memory efficiency
 ```
 
-### 5. Start Fine-tuning
+### 6. Start Fine-tuning
 
 ```bash
 # Start training with default config
 python src/finetune.py
 
-# Or with custom config
+# Or specify custom config
 python src/finetune.py --config config/training_config.yaml
+
+# Or train with custom parameters
+python src/finetune.py --mode train
 ```
 
-### 6. Monitor Training
+### 7. Monitor Training
 
-Training progress will be displayed in the terminal. If you enabled Weights & Biases, you can also monitor online.
+Training progress will be displayed in the terminal. Key metrics:
+- Loss values
+- Learning rate
+- Training speed (samples/sec)
+- GPU memory usage
 
 **Expected training time:**
-- **4B model**: 2-4 hours on RTX 4090
-- **9B model**: 6-8 hours on RTX 4090
+- **4B model**: 2-4 hours on RTX 4090 / A100
+- Model automatically uses `device_map="auto"` for multi-GPU setups
 
 ## 📊 Evaluation
 
