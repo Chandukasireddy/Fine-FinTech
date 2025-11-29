@@ -1,0 +1,60 @@
+# Fine-tuning Configuration for Gemma3 on FinQA Dataset
+
+# Model Configuration
+model_name: "google/gemma-2-9b-it"  # HuggingFace model name
+ollama_model_name: "gemma3:4b"      # Your Ollama model
+use_ollama_weights: true
+
+# LoRA (Low-Rank Adaptation) Configuration
+lora_r: 16                          # Rank of adaptation
+lora_alpha: 32                      # LoRA scaling parameter
+lora_dropout: 0.1                   # LoRA dropout
+lora_target_modules:                # Modules to apply LoRA to
+  - "q_proj"
+  - "v_proj" 
+  - "k_proj"
+  - "o_proj"
+
+# Quantization Configuration (for memory efficiency)
+use_4bit: true                      # Use 4-bit quantization
+bnb_4bit_compute_dtype: "float16"   # Computation dtype
+bnb_4bit_use_double_quant: true     # Use double quantization
+bnb_4bit_quant_type: "nf4"          # Quantization type
+
+# Training Parameters
+output_dir: "./outputs"             # Where to save the model
+num_train_epochs: 3                 # Number of training epochs
+per_device_train_batch_size: 2      # Training batch size per device
+per_device_eval_batch_size: 2       # Evaluation batch size per device
+gradient_accumulation_steps: 4      # Gradient accumulation steps
+learning_rate: 2e-4                 # Learning rate
+max_grad_norm: 1.0                  # Gradient clipping
+weight_decay: 0.01                  # Weight decay
+warmup_steps: 100                   # Warmup steps
+
+# Data Parameters
+max_seq_length: 2048                # Maximum sequence length
+dataset_text_field: "text"          # Field name for text data
+
+# Logging and Checkpointing
+logging_steps: 10                   # Log every N steps
+save_steps: 500                     # Save checkpoint every N steps
+eval_steps: 500                     # Evaluate every N steps
+save_total_limit: 3                 # Maximum number of checkpoints to keep
+
+# Monitoring (Weights & Biases)
+use_wandb: false                    # Enable W&B logging (set to true if you have W&B)
+wandb_project: "gemma3-finqa-finetune"
+wandb_run_name: null                # Auto-generate run name
+
+# Advanced Training Settings
+# Uncomment and modify as needed:
+
+# fp16: true                        # Use mixed precision training
+# gradient_checkpointing: true      # Use gradient checkpointing to save memory
+# dataloader_num_workers: 4         # Number of data loader workers
+# seed: 42                          # Random seed for reproducibility
+
+# Early Stopping (if using validation set)
+# early_stopping_patience: 3       # Stop if no improvement for N evaluations
+# early_stopping_threshold: 0.01   # Minimum improvement threshold
