@@ -1,103 +1,35 @@
 """
-Utility functions for model conversion and evaluation
+Utility functions for model evaluation
 """
 
-import os
-import json
 import torch
-import ollama
-import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel
-import requests
 
-logger = logging.getLogger(__name__)
+def load_model_for_inference(model_path: str):
+    """Load a fine-tuned model for inference"""
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        torch_dtype=torch.bfloat16,
+        device_map="auto"
+    )
+    return model, tokenizer
 
-class ModelConverter:
-    """Convert between different model formats"""
+def generate_response(model, tokenizer, prompt: str, max_length: int = 512):
+    """Generate response from model"""
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     
-    def __init__(self, model_path: str):
-        self.model_path = Path(model_path)
-        
-    def convert_to_ollama_format(self, ollama_model_name: str = "gemma3-finetuned"):
-        """
-        Convert fine-tuned model to Ollama format
-        Note: This is a simplified version. For full conversion, you may need additional tools.
-        """
-        logger.info(f"Converting model to Ollama format: {ollama_model_name}")
-        
-        try:
-            # Load the fine-tuned model
-            tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-            model = AutoModelForCausalLM.from_pretrained(self.model_path)
-            
-            # Save in a format compatible with Ollama
-            # This is a placeholder - actual conversion may require GGUF format
-            output_dir = self.model_path / "ollama_export"
-            output_dir.mkdir(exist_ok=True)
-            
-            # Save model and tokenizer
-            model.save_pretrained(output_dir / "model")
-            tokenizer.save_pretrained(output_dir / "tokenizer")
-            
-            # Create Ollama Modelfile
-            modelfile_content = f"""
-FROM {output_dir / "model"}
-
-TEMPLATE \"\"\"{{ if .System }}{{ .System }}
-{{ end }}{{ if .Prompt }}### Instruction:
-{{ .Prompt }}
-
-{{ end }}### Response:
-{{ .Response }}\"\"\"
-
-PARAMETER stop "###"
-PARAMETER stop "Instruction:"
-PARAMETER stop "Response:"
-
-SYSTEM \"\"\"You are a helpful assistant specialized in financial analysis and reasoning.\"\"\"
-"""
-            
-            with open(output_dir / "Modelfile", "w") as f:
-                f.write(modelfile_content)
-            
-            logger.info(f"Model exported to: {output_dir}")
-            logger.info("To import into Ollama, run:")
-            logger.info(f"ollama create {ollama_model_name} -f {output_dir / 'Modelfile'}")
-            
-        except Exception as e:
-            logger.error(f"Error converting model: {str(e)}")
-            raise
-
-class ModelEvaluator:
-    """Evaluate model performance"""
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_length,
+            temperature=0.7,
+            do_sample=True
+        )
     
-    def __init__(self, model_path: Optional[str] = None, ollama_model: Optional[str] = None):
-        self.model_path = model_path
-        self.ollama_model = ollama_model
-        
-        if model_path:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_path, 
-                torch_dtype=torch.float16,
-                device_map="auto"
-            )
-        
-    def generate_response(self, prompt: str, max_length: int = 512, temperature: float = 0.7) -> str:
-        """Generate response using the model"""
-        
-        if self.ollama_model:
-            return self._generate_with_ollama(prompt, max_length, temperature)
-        else:
-            return self._generate_with_transformers(prompt, max_length, temperature)
-    
-    def _generate_with_ollama(self, prompt: str, max_length: int, temperature: float) -> str:
-        """Generate using Ollama"""
-        try:
-            response = ollama.chat(
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return response
+
                 model=self.ollama_model,
                 messages=[{"role": "user", "content": prompt}],
                 options={
