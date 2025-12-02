@@ -1,34 +1,46 @@
 """
-Utility functions for model evaluation
+Utility functions for loading model and tokenizer
 """
 
+import os
 import torch
+from dotenv import load_dotenv
+from huggingface_hub import login
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-def load_model_for_inference(model_path: str):
-    """Load a fine-tuned model for inference"""
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.bfloat16,
-        device_map="auto"
-    )
-    return model, tokenizer
 
-def generate_response(model, tokenizer, prompt: str, max_length: int = 512):
-    """Generate response from model"""
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+def load_model_and_tokenizer(model_name: str = "google/gemma-3-4b-it"):
+    """
+    Load model and tokenizer with HuggingFace authentication
     
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=max_length,
-            temperature=0.7,
-            do_sample=True
-        )
+    Args:
+        model_name: HuggingFace model name
+        
+    Returns:
+        tuple: (model, tokenizer)
+    """
+    # Load environment and authenticate
+    load_dotenv()
+    hf_token = os.getenv("HUGGINGFACE_TOKEN")
     
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return response
+    if not hf_token:
+        raise ValueError("HUGGINGFACE_TOKEN not found in .env file")
+    
+    login(hf_token)
+    
+    # Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
+    
+    # Load model
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        device_map="auto",
+        torch_dtype=torch.bfloat16,
+        attn_implementation='eager',
+        token=hf_token
+    ).eval()
+    
+    return model, tokenizer
 
                 model=self.ollama_model,
                 messages=[{"role": "user", "content": prompt}],
