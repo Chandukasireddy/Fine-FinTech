@@ -42,10 +42,12 @@ cd Fine-FinTech
 conda create -n fine-fintech python=3.10 -y
 conda activate fine-fintech
 
-# Install dependencies
-pip install torch
+# Install dependencies from requirements.txt
+pip install -r requirements.txt
+
+# IMPORTANT: Reinstall transformers with Gemma-3 support
+pip uninstall transformers -y
 pip install git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3
-pip install accelerate peft trl datasets huggingface_hub python-dotenv
 
 # Add your HuggingFace token to .env
 echo "HUGGINGFACE_TOKEN=your_token_here" > .env
@@ -164,9 +166,18 @@ training_arguments = TrainingArguments(
 - Update `.env` file with correct token
 - Make sure you accepted Gemma-3 license
 
-**Module Not Found**:
+**Module Not Found or Import Errors**:
 - Activate conda environment: `conda activate fine-fintech`
-- Reinstall dependencies from requirements.txt
+- Make sure transformers Gemma-3 branch is installed:
+  ```bash
+  pip uninstall transformers -y
+  pip install git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3
+  ```
+
+**Version Compatibility Issues**:
+- The project requires specific versions that work together
+- Always reinstall transformers from Gemma-3 branch after installing requirements.txt
+- Compatible versions: peft>=0.13.0, trl>=0.11.0
 
 ## 📈 After Training
 
