@@ -1,53 +1,41 @@
 # Fine-FinTech: Gemma-3 Fine-tuning for Financial Q&A
 
-A comprehensive repository for fine-tuning Google's Gemma-3 model using the TheFinAI/Fino1_Reasoning_Path_FinQA dataset to create a specialized financial reasoning model.
-
-## 🎯 Project Overview
-
-This project enables you to fine-tune the Gemma-3 model from HuggingFace to better understand and respond to financial questions with step-by-step reasoning. The model is trained on the FinQA dataset which contains financial question-answering pairs with detailed reasoning paths.
+Fine-tune Google's Gemma-3-4B model on the TheFinAI/Fino1_Reasoning_Path_FinQA dataset for specialized financial reasoning.
 
 ## 📁 Project Structure
 
 ```
 Fine-FinTech/
-├── src/                     # Source code
-│   ├── data_loader.py      # Dataset loading and preprocessing
-│   ├── finetune.py         # Main fine-tuning script
-│   └── utils.py            # Model conversion and evaluation utilities
-├── config/                  # Configuration files
-│   └── training_config.yaml # Training parameters
-├── scripts/                 # Utility scripts
-│   ├── setup.py            # Environment setup
-│   ├── hf_login.py         # HuggingFace authentication
-│   └── evaluate.py         # Model evaluation
-├── .env                     # Environment variables (HF token)
-├── data/                    # Dataset storage (auto-created)
-├── models/                  # Model storage (auto-created)
-├── outputs/                 # Training outputs (auto-created)
+├── src/
+│   ├── data_loader.py      # Dataset loading and formatting with prompt templates
+│   ├── train.py            # Main training script with SFTTrainer
+│   └── utils.py            # Model and tokenizer loading utilities
+├── scripts/
+│   └── hf_login.py         # HuggingFace authentication helper
+├── config/
+│   └── training_config.yaml # Training parameters (optional)
+├── .env                     # HuggingFace token
 ├── requirements.txt         # Python dependencies
-└── README.md               # This file
+└── README.md
 ```
 
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
 
-- **Python 3.10+** with pip
-- **NVIDIA GPU** with 8GB+ VRAM (recommended)
-- **HuggingFace Account** with access to Gemma-3 model
-- **Git** for cloning repositories
+- Python 3.10+
+- NVIDIA GPU with CUDA support (or CPU for testing)
+- HuggingFace account
 
-### 2. Accept Gemma-3 License
+### 2. Get HuggingFace Access
 
-Before using Gemma-3, you need to accept the license:
-1. Visit: https://huggingface.co/google/gemma-3-4b-it
-2. Click "Agree and access repository"
-3. Get your HuggingFace token from: https://huggingface.co/settings/tokens
+1. Accept Gemma-3 license: https://huggingface.co/google/gemma-3-4b-it
+2. Get your token: https://huggingface.co/settings/tokens (create "Read" token)
 
-### 3. Setup Environment
+### 3. Setup
 
 ```bash
-# Navigate to project directory
+# Clone and navigate to project
 cd Fine-FinTech
 
 # Create conda environment
@@ -55,236 +43,149 @@ conda create -n fine-fintech python=3.10 -y
 conda activate fine-fintech
 
 # Install dependencies
-pip install -U datasets accelerate peft trl bitsandbytes git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3
-pip install python-dotenv PyYAML wandb
+pip install torch
+pip install git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3
+pip install accelerate peft trl datasets huggingface_hub python-dotenv
 
-# Add your HuggingFace token to .env file
+# Add your HuggingFace token to .env
 echo "HUGGINGFACE_TOKEN=your_token_here" > .env
 ```
 
-### 4. Test HuggingFace Authentication
+### 4. Start Training
 
 ```bash
-python scripts/hf_login.py
+python src/train.py
 ```
 
-You should see: "✓ Successfully logged in to Hugging Face!"
+That's it! The script will:
+- Load the Gemma-3-4B model
+- Download 500 samples from FinQA dataset
+- Apply LoRA for efficient fine-tuning
+- Train for 1 epoch
+- Save the model to `output/final_model`
 
-### 5. Configure Training
+## 📊 What Gets Trained
 
-The configuration is already set in `config/training_config.yaml`. Key settings:
+**Model**: google/gemma-3-4b-it (4 billion parameters)
+**Dataset**: TheFinAI/Fino1_Reasoning_Path_FinQA (500 samples)
+**Method**: LoRA (Low-Rank Adaptation) - only trains ~0.1% of parameters
+**Training Time**: ~30-60 minutes on modern GPU
 
-```yaml
-model_name: "google/gemma-3-4b-it"  # Gemma-3 4B instruction-tuned model
-num_train_epochs: 3                  # Training epochs
-per_device_train_batch_size: 2       # Batch size (adjust for your GPU)
-learning_rate: 2e-4                  # Learning rate
-max_seq_length: 2048                 # Maximum sequence length
-use_4bit: true                       # Use 4-bit quantization for memory efficiency
-```
-
-### 6. Start Fine-tuning
-
-```bash
-# Start training with default config
-python src/finetune.py
-
-# Or specify custom config
-python src/finetune.py --config config/training_config.yaml
-
-# Or train with custom parameters
-python src/finetune.py --mode train
-```
-
-### 7. Monitor Training
-
-Training progress will be displayed in the terminal. Key metrics:
-- Loss values
-- Learning rate
-- Training speed (samples/sec)
-- GPU memory usage
-
-**Expected training time:**
-- **4B model**: 2-4 hours on RTX 4090 / A100
-- Model automatically uses `device_map="auto"` for multi-GPU setups
-
-## 📊 Evaluation
-
-### Quick Evaluation with Sample Questions
-
-```bash
-python scripts/evaluate.py --ollama_model gemma3:4b --sample_test
-```
-
-### Evaluate Fine-tuned Model
-
-```bash
-# Evaluate HuggingFace format model
-python scripts/evaluate.py --model_path ./outputs --sample_test
-
-# Compare with original Ollama model
-python scripts/evaluate.py --ollama_model gemma3:4b --sample_test
-```
-
-### Custom Test Set
-
-```bash
-python scripts/evaluate.py --model_path ./outputs --test_file path/to/test.json
-```
-
-## 🔧 Advanced Usage
-
-### Custom Dataset
-
-To use your own financial dataset:
-
-1. Modify `src/data_loader.py` to load your data
-2. Ensure your data has these fields:
-   - `question`: The financial question
-   - `context`: Relevant financial context/data
-   - `reasoning_path`: Step-by-step reasoning (optional)
-   - `answer`: Final answer
-
-### Memory Optimization
-
-For GPUs with less memory, adjust these settings in `config/training_config.yaml`:
-
-```yaml
-# Reduce batch size
-per_device_train_batch_size: 1
-gradient_accumulation_steps: 8  # Increase to maintain effective batch size
-
-# Enable gradient checkpointing
-gradient_checkpointing: true
-
-# Use 4-bit quantization
-use_4bit: true
-```
-
-### Converting to Ollama Format
-
-After training, convert your model for use with Ollama:
+### Training Configuration
 
 ```python
-from src.utils import ModelConverter
+# LoRA Config
+- Rank: 64
+- Alpha: 16
+- Dropout: 0.05
+- Target modules: q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj
 
-converter = ModelConverter("./outputs")
-converter.convert_to_ollama_format("gemma3-finqa")
-
-# Then in terminal:
-# ollama create gemma3-finqa -f ./outputs/ollama_export/Modelfile
+# Training Args
+- Batch size: 1 per device
+- Gradient accumulation: 2 steps
+- Learning rate: 2e-4
+- Epochs: 1
+- Optimizer: paged_adamw_32bit
 ```
 
-## 📈 Training Configuration Details
+## 🔍 Prompt Templates
 
-### LoRA (Low-Rank Adaptation)
+The training uses special prompt formatting:
 
-The project uses LoRA for efficient fine-tuning:
+**Training Format** (with reasoning):
+```
+### Question:
+{question}
 
-```yaml
-lora_r: 16          # Rank (higher = more parameters but better adaptation)
-lora_alpha: 32      # Scaling factor
-lora_dropout: 0.1   # Dropout rate
-lora_target_modules: ["q_proj", "v_proj", "k_proj", "o_proj"]
+### Response:
+<think>
+{reasoning}
+</think>
+
+{answer}
 ```
 
-### Quantization
+**Inference Format** (without reasoning tags):
+```
+### Question:
+{question}
 
-4-bit quantization is used to reduce memory usage:
-
-```yaml
-use_4bit: true
-bnb_4bit_compute_dtype: "float16"
-bnb_4bit_use_double_quant: true
-bnb_4bit_quant_type: "nf4"
+### Response:
+{response}
 ```
 
-## 🎯 Dataset: TheFinAI/Fino1_Reasoning_Path_FinQA
+## 📁 Key Files
 
-This dataset contains:
-- **Financial Questions**: Real-world financial analysis questions
-- **Context**: Relevant financial data and information
-- **Reasoning Paths**: Step-by-step solutions
-- **Answers**: Final numerical or textual answers
+- **src/utils.py**: Loads model and tokenizer with HF authentication
+- **src/data_loader.py**: Contains prompt templates, dataset loading, and formatting functions
+- **src/train.py**: Complete training pipeline with SFTTrainer
+- **requirements.txt**: Minimal dependencies needed
+- **.env**: Your HuggingFace token (keep private!)
 
-**Sample Data Format:**
-```json
-{
-  "question": "What is the current ratio?",
-  "context": "Current assets: $50,000, Current liabilities: $25,000",
-  "reasoning_path": "Current ratio = Current assets / Current liabilities = $50,000 / $25,000 = 2.0",
-  "answer": "2.0"
-}
+## 🔧 Customization
+
+### Use More Training Data
+
+Edit `src/train.py`:
+```python
+dataset = load_and_format_dataset(tokenizer, num_samples=1000)  # Change 500 to 1000
 ```
 
-## 🔍 Troubleshooting
+### Adjust Training Epochs
 
-### Common Issues
+Edit `src/train.py`:
+```python
+training_arguments = TrainingArguments(
+    num_train_epochs=3,  # Change from 1 to 3
+    ...
+)
+```
 
-1. **CUDA Out of Memory**
-   - Reduce `per_device_train_batch_size`
-   - Increase `gradient_accumulation_steps`
-   - Enable gradient checkpointing
+### Change Batch Size (for memory)
 
-2. **Slow Training**
-   - Ensure CUDA is properly installed
-   - Check GPU utilization with `nvidia-smi`
-   - Consider using mixed precision training
+Edit `src/train.py`:
+```python
+training_arguments = TrainingArguments(
+    per_device_train_batch_size=2,  # Increase if you have more GPU memory
+    gradient_accumulation_steps=1,   # Decrease accordingly
+    ...
+)
+```
 
-3. **Dataset Loading Errors**
-   - Check internet connection for HuggingFace downloads
-   - Verify dataset name and format
-   - Check available disk space
+## 🐛 Troubleshooting
 
-4. **Ollama Integration Issues**
-   - Ensure Ollama is running: `ollama serve`
-   - Verify model is available: `ollama list`
-   - Check Ollama version compatibility
+**CUDA Out of Memory**:
+- Reduce batch size to 1
+- Close other applications using GPU
+- Use gradient checkpointing
 
-### Performance Tips
+**Invalid HuggingFace Token**:
+- Get new token from https://huggingface.co/settings/tokens
+- Update `.env` file with correct token
+- Make sure you accepted Gemma-3 license
 
-- **Use SSD storage** for faster data loading
-- **Monitor GPU memory** usage during training
-- **Save checkpoints frequently** for long training runs
-- **Use evaluation dataset** to monitor overfitting
+**Module Not Found**:
+- Activate conda environment: `conda activate fine-fintech`
+- Reinstall dependencies from requirements.txt
 
-## 📚 Additional Resources
+## 📈 After Training
 
-- [Ollama Documentation](https://ollama.ai/)
-- [LoRA Paper](https://arxiv.org/abs/2106.09685)
-- [Gemma Model Card](https://huggingface.co/google/gemma-2-9b-it)
+Your fine-tuned model will be in `output/final_model/`. Use it with:
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+model = AutoModelForCausalLM.from_pretrained("output/final_model")
+tokenizer = AutoTokenizer.from_pretrained("output/final_model")
+```
+
+## 📚 Resources
+
+- [Gemma-3 Model](https://huggingface.co/google/gemma-3-4b-it)
 - [FinQA Dataset](https://huggingface.co/datasets/TheFinAI/Fino1_Reasoning_Path_FinQA)
-
-## 🤝 Contributing
-
-Feel free to contribute improvements:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+- [LoRA Paper](https://arxiv.org/abs/2106.09685)
+- [TRL Documentation](https://huggingface.co/docs/trl)
 
 ## 📄 License
 
-This project is open source. Please check individual model and dataset licenses for specific terms.
-
-## 🆘 Support
-
-If you encounter issues:
-
-1. Check the troubleshooting section above
-2. Review the logs in `./outputs/`
-3. Open an issue with detailed error information
-4. Include your system specifications and configuration
-
-## 🎉 What's Next?
-
-After successful fine-tuning:
-
-1. **Test your model** with various financial questions
-2. **Compare performance** with the original model
-3. **Share your results** with the community
-4. **Experiment with different configurations**
-5. **Try on your own financial datasets**
-
-Happy fine-tuning! 🚀💰
+Open source. Check individual model and dataset licenses for terms.
